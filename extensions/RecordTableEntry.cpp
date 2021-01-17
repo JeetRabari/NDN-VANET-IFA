@@ -16,7 +16,6 @@ RecordTableEntry::RecordTableEntry(uint64_t noOfReceivedInterest, uint64_t noOfS
 Default dtor
 */
 RecordTableEntry::~RecordTableEntry(){
-
 }
 
 /*

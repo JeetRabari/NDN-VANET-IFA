@@ -27,6 +27,8 @@
 #include "algorithm.hpp"
 #include "common/logger.hpp"
 
+
+
 namespace nfd {
 namespace fw {
 
@@ -71,6 +73,20 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
   std::string myStr((char *)ptr);
   std::cout << "APPLICATION PARAMETERS : " << myStr << std::endl;
 
+  // Get vehicleID from name
+  // 2nd last element in name fromat is vehicleID
+  string vehicleID = interest.getName().at(-2).toUri();
+
+
+  // Check whether decrypted value matches vehicleID
+  
+  // vehicleID is in malicious then drop interest
+  if (m_maliciousTable.contains(vehicleID)){
+    std::cout << "Interest From Malicious Interest: Dropping it!!" << std::endl;
+    this->rejectPendingInterest(pitEntry);
+    return;
+  }
+
   RetxSuppressionResult suppression = m_retxSuppression.decidePerPitEntry(*pitEntry);
   if (suppression == RetxSuppressionResult::SUPPRESS) {
     NFD_LOG_DEBUG(interest << " from=" << ingress << " suppressed");
@@ -100,6 +116,13 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
 
     auto egress = FaceEndpoint(it->getFace(), 0);
     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << egress);
+    
+    // UPDATE record table information
+    if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
+    m_recordTable.incrementNoOfReceivedInterest(vehicleID);
+    m_recordTable.updateSatisfactionRatio(vehicleID);
+    //
+
     this->sendInterest(pitEntry, egress, interest);
     return;
   }
@@ -111,6 +134,13 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
 
   if (it != nexthops.end()) {
     auto egress = FaceEndpoint(it->getFace(), 0);
+
+    // UPDATE record table information
+    if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
+    m_recordTable.incrementNoOfReceivedInterest(vehicleID);
+    m_recordTable.updateSatisfactionRatio(vehicleID);
+    //
+
     this->sendInterest(pitEntry, egress, interest);
     NFD_LOG_DEBUG(interest << " from=" << ingress << " retransmit-unused-to=" << egress);
     return;
@@ -123,6 +153,13 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
   }
   else {
     auto egress = FaceEndpoint(it->getFace(), 0);
+
+    // UPDATE record table information
+    if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
+    m_recordTable.incrementNoOfReceivedInterest(vehicleID);
+    m_recordTable.updateSatisfactionRatio(vehicleID);
+    //
+
     this->sendInterest(pitEntry, egress, interest);
     NFD_LOG_DEBUG(interest << " from=" << ingress << " retransmit-retry-to=" << egress);
   }
@@ -133,6 +170,16 @@ FifaStrategy::afterReceiveNack(const FaceEndpoint& ingress, const lp::Nack& nack
                                      const shared_ptr<pit::Entry>& pitEntry)
 {
   this->processNack(ingress.face, nack, pitEntry);
+}
+
+void FifaStrategy::beforeSatisfyInterest(const shared_ptr<pit::Entry>& pitEntry, const FaceEndpoint& ingress, const Data& data) {
+     
+     // find vehicleID from name
+     string vehicleID = data.getName().at(-2).toUri();
+
+     // update record table info
+     m_recordTable.incrementNoOfSatisfiedInterest(vehicleID);
+     m_recordTable.updateSatisfactionRatio(vehicleID);
 }
 
 } // namespace fw

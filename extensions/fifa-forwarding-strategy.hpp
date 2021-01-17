@@ -30,6 +30,10 @@
 #include "ns3/ndnSIM/NFD/daemon/fw/process-nack-traits.hpp"
 #include "ns3/ndnSIM/NFD/daemon/fw/retx-suppression-exponential.hpp"
 
+// Addition
+#include "RecordTable.hpp"
+#include "MaliciousVehicleTable.hpp"
+
 namespace nfd {
 namespace fw {
 
@@ -73,15 +77,21 @@ public:
   void
   afterReceiveNack(const FaceEndpoint& ingress, const lp::Nack& nack,
                    const shared_ptr<pit::Entry>& pitEntry) override;
-private:
-  
 
+  void 
+  beforeSatisfyInterest(const shared_ptr<pit::Entry>& pitEntry,const FaceEndpoint& ingress, 
+                        const Data& data) override;
+private:
 PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   static const time::milliseconds RETX_SUPPRESSION_INITIAL;
   static const time::milliseconds RETX_SUPPRESSION_MAX;
   RetxSuppressionExponential m_retxSuppression;
 
   friend ProcessNackTraits<FifaStrategy>;
+
+private:
+  RecordTable m_recordTable;
+  MaliciousVehicleTable m_maliciousTable;
 };
 
 } // namespace fw
