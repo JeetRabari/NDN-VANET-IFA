@@ -36,6 +36,12 @@ class RecordTable {
 
         void updateSatisfactionRatio(string vehicleID);
 
+        void printTable();
+
+        uint64_t getTotalInterestCnt(void);
+
+        vector<string> keySet(void);
+
     private:
-        map<string, RecordTableEntry> m_RecordTable; 
+        unordered_map<string, RecordTableEntry> m_RecordTable; 
 };

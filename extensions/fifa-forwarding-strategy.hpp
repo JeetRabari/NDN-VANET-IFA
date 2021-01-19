@@ -81,6 +81,11 @@ public:
   void 
   beforeSatisfyInterest(const shared_ptr<pit::Entry>& pitEntry,const FaceEndpoint& ingress, 
                         const Data& data) override;
+
+  void primaryMethod(void);
+
+  void secondaryMethod(void);
+
 private:
 PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   static const time::milliseconds RETX_SUPPRESSION_INITIAL;
@@ -92,6 +97,7 @@ PUBLIC_WITH_TESTS_ELSE_PRIVATE:
 private:
   RecordTable m_recordTable;
   MaliciousVehicleTable m_maliciousTable;
+  unordered_map<std::string, int> map;
 };
 
 } // namespace fw

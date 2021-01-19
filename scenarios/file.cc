@@ -5,6 +5,7 @@
 #include "ns3/point-to-point-module.h"
 #include "ns3/ndnSIM-module.h"
 #include "fifa-forwarding-strategy.hpp"
+#include "GlobalVariable.hpp"
 
 namespace ns3 {
 
@@ -15,6 +16,12 @@ main(int argc, char* argv[])
   Config::SetDefault("ns3::PointToPointNetDevice::DataRate", StringValue("1Mbps"));
   Config::SetDefault("ns3::PointToPointChannel::Delay", StringValue("10ms"));
   Config::SetDefault("ns3::QueueBase::MaxSize", StringValue("20p"));
+
+  // Setting Global Variables
+  ns3::GlobalVariable::setSimulationEnd(100);
+  ns3::GlobalVariable::setSatisfactionRatioTh(0.35);
+  ns3::GlobalVariable::setPrimaryTimer("100ms");
+  ns3::GlobalVariable::setSecondaryTImer("500ms");
 
   // Read optional command-line parameters (e.g., enable visualizer with ./waf --run=<> --visualize
   CommandLine cmd;

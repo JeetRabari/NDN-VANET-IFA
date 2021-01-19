@@ -164,3 +164,33 @@ void RecordTable::updateSatisfactionRatio (string vehicleID) {
 
     entry->setSatisfactionRatio(new_satisfaction_ratio);   
 }
+
+void RecordTable::printTable(){
+    for (auto r : m_RecordTable){
+        std::cout << r.first << "\t"
+                  << r.second.getNoOfReceivedInterest() << "\t" 
+                  << r.second.getNoOfSatisfiedInterest() << "\t"
+                  << r.second.getSatisfactionRatio() << endl; 
+    }
+}
+
+uint64_t RecordTable::getTotalInterestCnt(){
+    
+    uint64_t total = 0;
+
+    for (auto r : m_RecordTable){
+        total += r.second.getNoOfReceivedInterest();
+    }
+
+    return total;
+}
+
+vector<string> RecordTable::keySet(){
+    vector<string> keys;
+
+    for(auto r : m_RecordTable){
+        keys.push_back(r.first);
+    }
+
+    return keys;
+}
