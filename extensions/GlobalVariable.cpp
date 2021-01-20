@@ -15,7 +15,7 @@ std::string ns3::GlobalVariable::getSecondaryTimer(void){
     return secondaryTimer;
 }
 
-void ns3::GlobalVariable::setSecondaryTImer(std::string time_str){
+void ns3::GlobalVariable::setSecondaryTimer(std::string time_str){
     secondaryTimer = time_str;
 }
 

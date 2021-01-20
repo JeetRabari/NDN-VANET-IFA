@@ -49,7 +49,7 @@ uint64_t RecordTable::getNoOfSatisfiedInterest (string vehicleID) {
 double_t RecordTable::getSatisfactionRatio (string vehicleID) {
     if (!hasRecord(vehicleID) ) {
         cout << "getSatisfactionRatio(): invalid vehicleID" <<endl;
-        return 0;
+        return std::numeric_limits<double>::max();
     }
 
     RecordTableEntry *entry;
@@ -87,7 +87,7 @@ void RecordTable::setSatisfactionRatio (string vehicleID, double_t satisfactionR
 
 void RecordTable::setNoOfSatisfiedInterest (string vehicleID, uint64_t satisfiedRatio) {
     if(!hasRecord(vehicleID)) {
-        cout << "setNoOfSatisfiedInterest(): invalid vehicleID" << endl;
+        cout << "setNoOfSatisfiedInterest(): invalid vehicleID:" << vehicleID << endl;
         return;
     }
 

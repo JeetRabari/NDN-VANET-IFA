@@ -98,6 +98,7 @@ private:
   RecordTable m_recordTable;
   MaliciousVehicleTable m_maliciousTable;
   unordered_map<std::string, int> map;
+  std::string m_VID;
 };
 
 } // namespace fw

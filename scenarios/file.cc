@@ -20,8 +20,9 @@ main(int argc, char* argv[])
   // Setting Global Variables
   ns3::GlobalVariable::setSimulationEnd(100);
   ns3::GlobalVariable::setSatisfactionRatioTh(0.35);
+  ns3::GlobalVariable::setInterestCntTh(0.75);
   ns3::GlobalVariable::setPrimaryTimer("100ms");
-  ns3::GlobalVariable::setSecondaryTImer("500ms");
+  ns3::GlobalVariable::setSecondaryTimer("500ms");
 
   // Read optional command-line parameters (e.g., enable visualizer with ./waf --run=<> --visualize
   CommandLine cmd;
@@ -61,6 +62,7 @@ main(int argc, char* argv[])
   producerHelper.SetPrefix("/prefix");
   producerHelper.SetAttribute("PayloadSize", StringValue("1024"));
   producerHelper.Install(nodes.Get(2)); // last node
+
 
   Simulator::Stop(Seconds(10.0));
 

@@ -132,6 +132,7 @@ protected:
   GetRetxTimer() const;
 
 protected:
+  uint64_t dataPcktCnt;
   Ptr<UniformRandomVariable> m_rand; ///< @brief nonce generator
 
   uint32_t m_seq;      ///< @brief currently requested sequence number

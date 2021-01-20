@@ -17,7 +17,7 @@ namespace ns3{
             static void setSatisfactionRatioTh(double_t th);
             static std::string getPrimaryTimer(void);
             static void setPrimaryTimer(std::string time_str);
-            static void setSecondaryTImer(std::string time_str);
+            static void setSecondaryTimer(std::string time_str);
             static std::string getSecondaryTimer(void);
         private:
             static int simulationEnd;

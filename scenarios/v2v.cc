@@ -20,6 +20,10 @@
 
 #include <bits/stdc++.h>
 
+#include "fifa-forwarding-strategy.hpp"
+#include "ndn-consumer-fifa.hpp"
+#include "GlobalVariable.hpp"
+
 namespace ns3{
 
 /**
@@ -46,16 +50,17 @@ namespace ns3{
 NS_LOG_COMPONENT_DEFINE ("V2VSimple");
 
 
-static const uint32_t numNodes = 168;
+static const uint32_t numNodes = 5;
 static const std::string valid_prefix("v2v");
-static const std::string fake_prefix("fake");
+static const std::string fake_prefix("v2v/fake");
 static const size_t cs_size = 1000;
 static const std::string output_path("/home/parth/Desktop/simulation_data/");
-static const DoubleValue normal_rate(20.0);
+static const DoubleValue normal_rate(10.0);
 static const DoubleValue attacker_rate(200.0);
-static const TimeValue attack_start_time = Seconds(25.0) ;
-static const TimeValue attack_stop_time = Seconds(125.0);
-static const int simulationEnd = 150;
+static const TimeValue attack_start_time = Seconds(25.0);
+static const TimeValue attack_stop_time = Seconds(75.0);
+static const TimeValue apps_stop_time = Seconds(100.0);
+static const int simulationEnd = 100;
 static const std::string traceFile("/home/parth/Desktop/sumo_files/mobility.tcl");
 static const std::string producerIdFile("/home/parth/Desktop/simulation_data/prodID.txt");
 
@@ -79,7 +84,7 @@ void installMobility(NodeContainer &c, int simulationEnd)
     for (uint32_t i = 0; i < numNodes; i++) {
       wayMobility[i] = c.Get(i)->GetObject<WaypointMobilityModel>();
       Waypoint waypointStart(Seconds(0), Vector3D(i*10, 0, 0));
-      Waypoint waypointEnd(Seconds(simulationEnd), Vector3D(i*10, 0, 0));
+      Waypoint waypointEnd(Seconds(simulationEnd), Vector3D(i*10+100, 0, 0));
 
       wayMobility[i]->AddWaypoint(waypointStart);
       wayMobility[i]->AddWaypoint(waypointEnd);
@@ -130,6 +135,9 @@ void installWifi(NodeContainer &c, NetDeviceContainer &devices)
 
   YansWifiPhyHelper wifiPhy = YansWifiPhyHelper::Default();
   wifiPhy.SetPcapDataLinkType(YansWifiPhyHelper::DLT_IEEE802_11_RADIO);
+  wifiPhy.Set("TxPowerStart", DoubleValue(20));
+  wifiPhy.Set("TxPowerEnd", DoubleValue(50));
+  wifiPhy.Set("TxPowerLevels", UintegerValue(5));
 
   YansWifiChannelHelper wifiChannel;
   wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -152,39 +160,35 @@ void installWifi(NodeContainer &c, NetDeviceContainer &devices)
 void installNDN(NodeContainer &c)
 {
   ndn::StackHelper ndnHelper;
-  ndnHelper.SetDefaultRoutes(true);
   ndnHelper.setCsSize(cs_size);
-
-  ndnHelper.Install(c);
-  ndn::StrategyChoiceHelper::InstallAll(valid_prefix, "/localhost/nfd/strategy/best-route");
-
+  ndnHelper.Install(c);  
 }
 
 void installConsumer(NodeContainer &c)
 {
-  ndn::AppHelper helper("ns3::ndn::ConsumerCbr");
+  ndn::AppHelper helper("ns3::ndn::ConsumerCbrFifa");
   helper.SetAttribute("Frequency", normal_rate);
   helper.SetAttribute("Randomize", StringValue("uniform"));
-  helper.SetPrefix(valid_prefix);
-
+  helper.SetPrefix(valid_prefix+"/file");
+  helper.SetAttribute("StopTime", apps_stop_time);
   helper.Install(c);
 }
 
 void installProducer(NodeContainer &c)
 {
   ndn::AppHelper producerHelper("ns3::ndn::Producer");
-  producerHelper.SetPrefix(valid_prefix);
+  producerHelper.SetPrefix(valid_prefix+"/file");
 
   producerHelper.Install(c);
 }
 
 void installAttacker(NodeContainer &c){
-    ndn::AppHelper helper("ns3::ndn::ConsumerCbr");
+    ndn::AppHelper helper("ns3::ndn::ConsumerCbrFifa");
     helper.SetAttribute("Frequency", attacker_rate);
     helper.SetAttribute("Randomize", StringValue("exponential"));
     helper.SetAttribute("StartTime", attack_start_time);
     helper.SetAttribute("StopTime", attack_stop_time);
-    helper.SetPrefix(fake_prefix);
+    helper.SetPrefix(valid_prefix+"/file/fake");
 
     helper.Install(c);
 }
@@ -240,22 +244,41 @@ std::unordered_set<int> getIdsFromFile(){
   return set;
 }
 
+// PIT entry size
+/*
+void pitTracer(Ptr<Node> node){
+  Ptr<ndn::nfd::Pit> pit = node->GetObject<ndn::nfd::Pit>();
+  std::cout << Simulator::Now().ToDouble(Time::S) << "\t"
+            << node->GetId() << "\t"
+            << Names::FindName (node) << "\t"
+            << pit->size() << endl;
+}
+*/
+
 int main (int argc, char *argv[])
 {
   NS_LOG_UNCOND ("V2VTest Simulator");
 
-  uint32_t numProducer = 40;
+  // Setting Global Variables
+  ns3::GlobalVariable::setSimulationEnd(simulationEnd);
+  ns3::GlobalVariable::setInterestCntTh(0.75);
+  ns3::GlobalVariable::setSatisfactionRatioTh(0.35);
+  ns3::GlobalVariable::setPrimaryTimer("10s");
+  ns3::GlobalVariable::setSecondaryTimer("20s");
+
+  uint32_t numProducer = 1;
   uint32_t numConsumer = numNodes - numProducer;
   uint32_t numAttacker = 0;
 
   NodeContainer c;
-  c.Create(numNodes + numAttacker); 
+  c.Create(numNodes); 
 
-  //installMobility(c, simulationEnd);
-  installMobilitySumo();
+  installMobility(c, simulationEnd);
+  //installMobilitySumo();
 
   NetDeviceContainer netDevices;
   installWifi(c, netDevices);
+
 
   installNDN(c);
 
@@ -264,7 +287,7 @@ int main (int argc, char *argv[])
   NodeContainer consumers;
   NodeContainer attacker;
 
-
+  /*
   std::unordered_set<int> producer_ids;
 
   getRandomNumbersInFile(0, numNodes, numProducer);
@@ -282,41 +305,60 @@ int main (int argc, char *argv[])
     if(producer_ids.find(i) != producer_ids.end()) continue;
     consumers.Add(c.Get(i));
   }
+  */
 
   
 
-  /*
+  
     //Mobility scenario 1 
-
-  producer.Add(c.Get(0));
-  producer.Add(c.Get(5));
-  producer.Add(c.Get(10));
-  producer.Add(c.Get(15));
-  producer.Add(c.Get(20));
+  producer.Add(c.Get(1));
+  //producer.Add(c.Get(0));
+  //producer.Add(c.Get(5));
+  //producer.Add(c.Get(10));
+  //producer.Add(c.Get(15));
+  //producer.Add(c.Get(20));
   
   for(int i=0; i<numNodes; i++){
-    if(i!=0 && i != 5 && i != 10 && i != 15 && i != 2 && i!=44){ //remove i!=44
+    if(i!=1 && i != 5 && i != 10 && i != 15 && i != 20 /*&& i!=44*/){ //remove i!=44
       consumers.Add(c.Get(i));
     }
   }
-  */
-
-  if(numAttacker > 0) attacker.Add(c.Get(44));//numNodes + numAttacker - 1));
+  if(numAttacker > 0) attacker.Add(c.Get(numNodes + numAttacker - 1));//numNodes + numAttacker - 1));
 
   installConsumer(consumers);
   installProducer(producer);
+
+  // install producer in all consumer also
+  //installProducer(consumers);
+  
+
   if(numAttacker > 0) installAttacker(attacker);
 
   // Routing header
   ndn::GlobalRoutingHelper ndnGRH;
   ndnGRH.InstallAll();
-  ndnGRH.AddOrigins(valid_prefix, producer);
+  ndnGRH.AddOrigins(valid_prefix+"/file", producer);
   ndn::GlobalRoutingHelper::CalculateRoutes();
+
+  // forwarding stretagy
+  ndn::StrategyChoiceHelper::InstallAll(valid_prefix, "/localhost/nfd/strategy/best-route-2");
+  //ndn::StrategyChoiceHelper::InstallAll(fake_prefix, "/localhost/nfd/strategy/ncc");
+
+
+  //ndn::StrategyChoiceHelper::InstallAll<nfd::fw::FifaStrategy>(fake_prefix);
+  //ndn::StrategyChoiceHelper::InstallAll<nfd::fw::FifaStrategy>(valid_prefix);
 
   Simulator::Stop(Seconds(simulationEnd));
   
   // trace details
-  ndn::L3RateTracer::InstallAll(output_path+"rate-trace_150"+ (numAttacker > 0 ? "_atck":"")+".txt", Seconds(5.0));
+  ndn::L3RateTracer::InstallAll(output_path+"rate-trace_100"+ (numAttacker > 0 ? "_atck":"")+".txt", Seconds(5.0));
+
+  // PIT tracer
+  /*for(int i = 5 ; i < simulationEnd ; i += 5) {
+    for(int j = 0 ; j < consumers.size() ; j++) {
+      Simulator::Schedule(Seconds(i), &pitTracer, consumers.Get(j));
+    }
+  }*/
 
   for ( int i = 0 ; i < simulationEnd ; i += 10){
     Simulator::Schedule(Seconds(i), &printCurrentSimulationTime);

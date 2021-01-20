@@ -59,20 +59,22 @@ FifaStrategy::FifaStrategy(Forwarder& forwarder, const Name& name)
   ns3::Time interval(ns3::GlobalVariable::getPrimaryTimer());
   ns3::Time interval2(ns3::GlobalVariable::getSecondaryTimer());
 
+  
   // set primary timer
-  for(ns3::Time start = ns3::Seconds(0) ; start < maxSimTime ; start = start + interval){
+  for(ns3::Time start = interval ; start < maxSimTime ; start = start + interval){
     ns3::Simulator::Schedule(start, &FifaStrategy::primaryMethod, this);
   }
 
   // set secondary timer
-  for(ns3::Time start = ns3::Seconds(0) ; start < maxSimTime ; start += interval2){
+  for(ns3::Time start = interval2 ; start < maxSimTime ; start += interval2){
     ns3::Simulator::Schedule(start, &FifaStrategy::secondaryMethod, this);
   }
 
 
   ParsedInstanceName parsed = parseInstanceName(name);
   if (!parsed.parameters.empty()) {
-    NDN_THROW(std::invalid_argument("FifaStrategy does not accept parameters"));
+    m_VID = parsed.parameters.toUri().substr(1);
+    std::cout << m_VID << std::endl;
   }
   if (parsed.version && *parsed.version != getStrategyName()[-1].toVersion()) {
     NDN_THROW(std::invalid_argument(
@@ -84,7 +86,7 @@ FifaStrategy::FifaStrategy(Forwarder& forwarder, const Name& name)
 const Name&
 FifaStrategy::getStrategyName()
 {
-  static Name strategyName("/localhost/nfd/strategy/FifaStrategy/%FD%05");
+  static Name strategyName("/localhost/nfd/strategy/FifaStrategy/%FD%05/");
   return strategyName;
 }
 
@@ -109,7 +111,7 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
   
   // vehicleID is in malicious then drop interest
   if (m_maliciousTable.contains(vehicleID)){
-    std::cout << "Interest From Malicious Interest: Dropping it!!" << std::endl;
+    //std::cout << "Interest From Malicious Interest: Dropping it!!" << std::endl;
     this->rejectPendingInterest(pitEntry);
     return;
   }
@@ -149,9 +151,11 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
     *       Update RecordTable        *
     *********************************** 
     */
-    if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
-    m_recordTable.incrementNoOfReceivedInterest(vehicleID);
-    m_recordTable.updateSatisfactionRatio(vehicleID);
+    if(vehicleID != m_VID){
+      if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
+      m_recordTable.incrementNoOfReceivedInterest(vehicleID);
+      m_recordTable.updateSatisfactionRatio(vehicleID);
+    }
     //
 
     this->sendInterest(pitEntry, egress, interest);
@@ -171,9 +175,11 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
     *       Update RecordTable        *
     *********************************** 
     */
-    if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
-    m_recordTable.incrementNoOfReceivedInterest(vehicleID);
-    m_recordTable.updateSatisfactionRatio(vehicleID);
+    if(vehicleID != m_VID){
+      if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
+      m_recordTable.incrementNoOfReceivedInterest(vehicleID);
+      m_recordTable.updateSatisfactionRatio(vehicleID);
+    }
     //
 
     this->sendInterest(pitEntry, egress, interest);
@@ -194,9 +200,11 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
     *       Update RecordTable        *
     *********************************** 
     */
-    if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
-    m_recordTable.incrementNoOfReceivedInterest(vehicleID);
-    m_recordTable.updateSatisfactionRatio(vehicleID);
+    if(vehicleID != m_VID){
+      if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
+      m_recordTable.incrementNoOfReceivedInterest(vehicleID);
+      m_recordTable.updateSatisfactionRatio(vehicleID);
+    }
     //
 
     this->sendInterest(pitEntry, egress, interest);
@@ -217,6 +225,8 @@ FifaStrategy::beforeSatisfyInterest(const shared_ptr<pit::Entry>& pitEntry, cons
      // find vehicleID from name
      string vehicleID = data.getName().at(-2).toUri();
 
+     if(vehicleID == m_VID) return;
+
      // update record table info
      m_recordTable.incrementNoOfSatisfiedInterest(vehicleID);
      m_recordTable.updateSatisfactionRatio(vehicleID);
@@ -234,20 +244,36 @@ void FifaStrategy::primaryMethod(){
 
   vector<string> keys = m_recordTable.keySet();
 
+  if(keys.size() == 0) return;
+
   for(string k : keys){
+
+    if(m_maliciousTable.contains(k)) continue;
+
     uint64_t curIntCnt = m_recordTable.getNoOfReceivedInerest(k);
     double_t curSR = m_recordTable.getSatisfactionRatio(k);
 
     if(curIntCnt >= int_th && curSR <= sr_th){
       // identify vehicle as malicious
       m_maliciousTable.adddVehicle(k);
-      std::cout<<"Identified Malicious Vehicle: " << k << endl;
+      std::cout<< "vid: " << k 
+               <<" curSR: " << curSR
+               << " curIntCnt: " << curIntCnt
+               << " int_th: " << int_th
+               << " sr_th: " << sr_th
+               << " total_intrest: " << totalInterestCnt <<endl;
+      std::cout<<"Identified Malicious Vehicle (Primary Method of "<<m_VID<<" ):" << k << endl;
     } 
   }
 }
 
 void FifaStrategy::secondaryMethod(){
+
+  //std::cout << "IN SECONDARY" << std::endl;
+
   vector<string> keys = m_recordTable.keySet();
+
+  if(keys.size() == 0) return;
 
   double_t minSR = std::numeric_limits<double>::max();
   string vid;
@@ -259,6 +285,8 @@ void FifaStrategy::secondaryMethod(){
     }
   }
 
+  if(m_maliciousTable.contains(vid)) return;
+
   if(map.find(vid) == map.end()){
     map.insert({vid,0});
   }
@@ -269,6 +297,7 @@ void FifaStrategy::secondaryMethod(){
   if(it->second == 3){
     // add it into malicious vehicle list
     m_maliciousTable.adddVehicle(vid);
+    std::cout<<"Identified Malicious Vehicle (Secondary Method of " << m_VID <<" ):" << vid << endl;
   }
 }
 

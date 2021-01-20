@@ -36,9 +36,10 @@
 
 #include <boost/lexical_cast.hpp>
 #include <boost/ref.hpp>
+#include <fstream>
 
 // Addition
-
+#include "ns3/ndnSIM/NFD/daemon/table/fib.hpp"
 /*
 #include "ns3/ndnSIM-module.h"
 #include "ns3/core-module.h"
@@ -91,6 +92,7 @@ ConsumerFifa::GetTypeId(void)
 ConsumerFifa::ConsumerFifa()
   : m_rand(CreateObject<UniformRandomVariable>())
   , m_seq(0)
+  , dataPcktCnt(0)
   , m_seqMax(0) // don't request anything
 {
   NS_LOG_FUNCTION_NOARGS();
@@ -163,6 +165,12 @@ ConsumerFifa::StopApplication() // Called at time specified by Stop
 
   // cleanup base stuff
   App::StopApplication();
+
+  std::ofstream openFile;
+
+  openFile.open("/home/parth/Desktop/simulation_data/out_data_cnt.txt", std::ios::app);
+
+  openFile << "v"+std::to_string(GetNode()->GetId()) << "\t" << dataPcktCnt << std::endl;
 }
 
 void
@@ -245,6 +253,8 @@ ConsumerFifa::OnData(shared_ptr<const Data> data)
 
   NS_LOG_FUNCTION(this << data);
 
+  dataPcktCnt++;
+
   // NS_LOG_INFO ("Received content object: " << boost::cref(*data));
 
   // This could be a problem...... //
@@ -325,6 +335,7 @@ ConsumerFifa::WillSendOutInterest(uint32_t sequenceNumber)
 
   m_rtt->SentSeq(SequenceNumber32(sequenceNumber), 1);
 }
+
 
 } // namespace ndn
 } // namespace ns3
