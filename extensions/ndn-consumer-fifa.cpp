@@ -79,12 +79,12 @@ ConsumerFifa::GetTypeId(void)
       .AddTraceSource("LastRetransmittedInterestDataDelay",
                       "Delay between last retransmitted Interest and received Data",
                       MakeTraceSourceAccessor(&ConsumerFifa::m_lastRetransmittedInterestDataDelay),
-                      "ns3::ndn::Consumer::LastRetransmittedInterestDataDelayCallback")
+                      "ns3::ndn::ConsumerFifa::LastRetransmittedInterestDataDelayCallback")
 
       .AddTraceSource("FirstInterestDataDelay",
                       "Delay between first transmitted Interest and received Data",
                       MakeTraceSourceAccessor(&ConsumerFifa::m_firstInterestDataDelay),
-                      "ns3::ndn::Consumer::FirstInterestDataDelayCallback");
+                      "ns3::ndn::ConsumerFifa::FirstInterestDataDelayCallback");
 
   return tid;
 }
@@ -93,6 +93,7 @@ ConsumerFifa::ConsumerFifa()
   : m_rand(CreateObject<UniformRandomVariable>())
   , m_seq(0)
   , dataPcktCnt(0)
+  , intPcktCnt(0)
   , m_seqMax(0) // don't request anything
 {
   NS_LOG_FUNCTION_NOARGS();
@@ -170,7 +171,7 @@ ConsumerFifa::StopApplication() // Called at time specified by Stop
 
   openFile.open("/home/parth/Desktop/simulation_data/out_data_cnt.txt", std::ios::app);
 
-  openFile << "v"+std::to_string(GetNode()->GetId()) << "\t" << dataPcktCnt << std::endl;
+  openFile << "v"+std::to_string(GetNode()->GetId()) << "\t" << intPcktCnt << "\t" <<dataPcktCnt << std::endl;
 }
 
 void
@@ -178,6 +179,8 @@ ConsumerFifa::SendPacket()
 {
   if (!m_active)
     return;
+
+  intPcktCnt++;
 
   NS_LOG_FUNCTION_NOARGS();
 
@@ -255,6 +258,7 @@ ConsumerFifa::OnData(shared_ptr<const Data> data)
 
   dataPcktCnt++;
 
+
   // NS_LOG_INFO ("Received content object: " << boost::cref(*data));
 
   // This could be a problem...... //
@@ -266,6 +270,7 @@ ConsumerFifa::OnData(shared_ptr<const Data> data)
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   //
   uint32_t seq = data->getName().at(-3).toSequenceNumber();
+
   NS_LOG_INFO("< DATA for " << seq);
 
   int hopCount = 0;

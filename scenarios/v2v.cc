@@ -1,4 +1,5 @@
 #include "ns3/core-module.h"
+
 #include "ns3/mobility-module.h"
 #include "ns3/network-module.h"
 #include "ns3/wifi-module.h"
@@ -10,19 +11,11 @@
 #include "ns3/ndnSIM/helper/ndn-stack-helper.hpp"
 #include <ns3/ndnSIM/helper/ndn-global-routing-helper.hpp>
 #include "ns3/animation-interface.h"
-#include "ns3/wifi-80211p-helper.h"
 #include "ns3/wave-mac-helper.h"
-#include "ns3/ndnSIM-module.h"
+#include "ns3/wifi-80211p-helper.h"
 
-// SUMO mobility
-#include "ns3/mobility-module.h"
-#include "ns3/ns2-mobility-helper.h"
-
-#include <bits/stdc++.h>
-
-#include "fifa-forwarding-strategy.hpp"
-#include "ndn-consumer-fifa.hpp"
-#include "GlobalVariable.hpp"
+#include <algorithm>
+#include <vector>
 
 namespace ns3{
 
@@ -50,20 +43,7 @@ namespace ns3{
 NS_LOG_COMPONENT_DEFINE ("V2VSimple");
 
 
-static const uint32_t numNodes = 5;
-static const std::string valid_prefix("v2v");
-static const std::string fake_prefix("v2v/fake");
-static const size_t cs_size = 1000;
-static const std::string output_path("/home/parth/Desktop/simulation_data/");
-static const DoubleValue normal_rate(10.0);
-static const DoubleValue attacker_rate(200.0);
-static const TimeValue attack_start_time = Seconds(25.0);
-static const TimeValue attack_stop_time = Seconds(75.0);
-static const TimeValue apps_stop_time = Seconds(100.0);
-static const int simulationEnd = 100;
-static const std::string traceFile("/home/parth/Desktop/sumo_files/mobility.tcl");
-static const std::string producerIdFile("/home/parth/Desktop/simulation_data/prodID.txt");
-
+static const uint32_t numNodes = 6;
 
 void printPosition(Ptr<const MobilityModel> mobility) //DEBUG purpose
 {
@@ -84,7 +64,7 @@ void installMobility(NodeContainer &c, int simulationEnd)
     for (uint32_t i = 0; i < numNodes; i++) {
       wayMobility[i] = c.Get(i)->GetObject<WaypointMobilityModel>();
       Waypoint waypointStart(Seconds(0), Vector3D(i*10, 0, 0));
-      Waypoint waypointEnd(Seconds(simulationEnd), Vector3D(i*10+100, 0, 0));
+      Waypoint waypointEnd(Seconds(simulationEnd), Vector3D(i*10, 0, 0));
 
       wayMobility[i]->AddWaypoint(waypointStart);
       wayMobility[i]->AddWaypoint(waypointEnd);
@@ -111,33 +91,20 @@ void installMobility(NodeContainer &c, int simulationEnd)
 
 }
 
-void installMobilitySumo()
-{
-    Ns2MobilityHelper ns2 = Ns2MobilityHelper (traceFile);
-    ns2.Install();
-}
 
 void installWifi(NodeContainer &c, NetDeviceContainer &devices)
 {
   // Modulation and wifi channel bit rate
-  std::string phyMode("OfdmRate6MbpsBW10MHz");
+  std::string phyMode("OfdmRate24Mbps");
 
   // Fix non-unicast data rate to be the same as that of unicast
   Config::SetDefault("ns3::WifiRemoteStationManager::NonUnicastMode", StringValue(phyMode));
 
-  // Use 802.11p wifi helper
-  Wifi80211pHelper wifi = Wifi80211pHelper::Default();
-
-  // Disable rate control
-  wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager",
-                               "DataMode", StringValue(phyMode),
-                               "ControlMode", StringValue(phyMode));
+  Wifi80211pHelper wifi = Wifi80211pHelper::Default ();
+  wifi.SetStandard(WIFI_PHY_STANDARD_80211a);
 
   YansWifiPhyHelper wifiPhy = YansWifiPhyHelper::Default();
   wifiPhy.SetPcapDataLinkType(YansWifiPhyHelper::DLT_IEEE802_11_RADIO);
-  wifiPhy.Set("TxPowerStart", DoubleValue(20));
-  wifiPhy.Set("TxPowerEnd", DoubleValue(50));
-  wifiPhy.Set("TxPowerLevels", UintegerValue(5));
 
   YansWifiChannelHelper wifiChannel;
   wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -149,221 +116,91 @@ void installWifi(NodeContainer &c, NetDeviceContainer &devices)
                                  "m2", DoubleValue(1.0));
   wifiPhy.SetChannel(wifiChannel.Create());
 
-  // Add a non-QoS wave upper mac
+  // Add a non-QoS upper mac
   NqosWaveMacHelper wifiMac = NqosWaveMacHelper::Default();
+  // Set it to adhoc mode
+  wifiMac.SetType("ns3::OcbWifiMac");
+
+  // Disable rate control
+  wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager",
+                               "DataMode", StringValue(phyMode),
+                               "ControlMode", StringValue(phyMode));
 
   devices = wifi.Install(wifiPhy, wifiMac, c);
-
-  //wifiPhy.EnablePcap(output_path+"packet_trace_data", devices , true);
 }
 
 void installNDN(NodeContainer &c)
 {
   ndn::StackHelper ndnHelper;
-  ndnHelper.setCsSize(cs_size);
-  ndnHelper.Install(c);  
+  ndnHelper.SetDefaultRoutes(true);
+
+  ndnHelper.Install(c);
+  ndn::StrategyChoiceHelper::InstallAll("/", "/localhost/nfd/strategy/broadcast");
 }
 
 void installConsumer(NodeContainer &c)
 {
   ndn::AppHelper helper("ns3::ndn::ConsumerCbrFifa");
-  helper.SetAttribute("Frequency", normal_rate);
+  helper.SetAttribute("Frequency", DoubleValue (1.0));
   helper.SetAttribute("Randomize", StringValue("uniform"));
-  helper.SetPrefix(valid_prefix+"/file");
-  helper.SetAttribute("StopTime", apps_stop_time);
+  helper.SetPrefix("/v2v/test");
+
   helper.Install(c);
 }
 
 void installProducer(NodeContainer &c)
 {
   ndn::AppHelper producerHelper("ns3::ndn::Producer");
-  producerHelper.SetPrefix(valid_prefix+"/file");
+  producerHelper.SetPrefix("/v2v");
 
-  producerHelper.Install(c);
+  producerHelper.Install(c.Get(0));
+  NS_LOG_INFO("Producer installed on node " << c.Get(0)->GetId());
+
 }
-
-void installAttacker(NodeContainer &c){
-    ndn::AppHelper helper("ns3::ndn::ConsumerCbrFifa");
-    helper.SetAttribute("Frequency", attacker_rate);
-    helper.SetAttribute("Randomize", StringValue("exponential"));
-    helper.SetAttribute("StartTime", attack_start_time);
-    helper.SetAttribute("StopTime", attack_stop_time);
-    helper.SetPrefix(valid_prefix+"/file/fake");
-
-    helper.Install(c);
-}
-
-void printCurrentSimulationTime(){
-  std::cout << "Simulation at time: " << Simulator::Now().As(Time::S) << "\n";
-}
-
-void getRandomNumbersInFile(int min, int max, int cnt)
-{
-  
-  if(max-min < cnt){
-    std::cout << "Count out of range" << std::endl;
-    return;
-  }
-
-  std::unordered_set<int> set;
-  std::ofstream file;
-
-  file.open(producerIdFile, ios::in | ios::out | ios::trunc);
-
-  Ptr<UniformRandomVariable> x = CreateObject<UniformRandomVariable> ();
-  x -> SetAttribute("Min", DoubleValue(min));
-  x -> SetAttribute("Max", DoubleValue(max));
-
-  while(cnt > 0){
-    int val = (int)(x -> GetValue());
-
-    if(set.find(val) == set.end()){
-      set.insert(val);
-      file << val << endl;
-      cnt--;
-    }
-  }
-
-  file.close();
-
-  return;
-}
-
-std::unordered_set<int> getIdsFromFile(){
-  std::ifstream file;
-  unordered_set<int> set;
-
-  file.open(producerIdFile);
-
-  string id;
-
-  while(getline(file, id)){
-    set.insert(stoi(id));
-  }
-
-  return set;
-}
-
-// PIT entry size
-/*
-void pitTracer(Ptr<Node> node){
-  Ptr<ndn::nfd::Pit> pit = node->GetObject<ndn::nfd::Pit>();
-  std::cout << Simulator::Now().ToDouble(Time::S) << "\t"
-            << node->GetId() << "\t"
-            << Names::FindName (node) << "\t"
-            << pit->size() << endl;
-}
-*/
 
 int main (int argc, char *argv[])
 {
   NS_LOG_UNCOND ("V2VTest Simulator");
 
-  // Setting Global Variables
-  ns3::GlobalVariable::setSimulationEnd(simulationEnd);
-  ns3::GlobalVariable::setInterestCntTh(0.75);
-  ns3::GlobalVariable::setSatisfactionRatioTh(0.35);
-  ns3::GlobalVariable::setPrimaryTimer("10s");
-  ns3::GlobalVariable::setSecondaryTimer("20s");
-
   uint32_t numProducer = 1;
-  uint32_t numConsumer = numNodes - numProducer;
-  uint32_t numAttacker = 0;
+  int simulationEnd = 10;
 
   NodeContainer c;
-  c.Create(numNodes); 
+  c.Create(numNodes);
 
   installMobility(c, simulationEnd);
-  //installMobilitySumo();
 
   NetDeviceContainer netDevices;
   installWifi(c, netDevices);
 
-
   installNDN(c);
 
   //setting application
+  Ptr<UniformRandomVariable> randomNum = CreateObject<UniformRandomVariable> ();
+  int producerId = randomNum->GetValue(0,numNodes-1);
+
   NodeContainer producer;
+  producer.Add(c.Get(producerId));
+
   NodeContainer consumers;
-  NodeContainer attacker;
-
-  /*
-  std::unordered_set<int> producer_ids;
-
-  getRandomNumbersInFile(0, numNodes, numProducer);
-
-  producer_ids = getIdsFromFile();
-
-  std::unordered_set<int> :: iterator itr;
-
-  for(itr = producer_ids.begin() ; itr != producer_ids.end() ; itr++){
-    producer.Add(c.Get(*itr));
-  }
-
-
-  for(int i = 0 ; i < numNodes ; i++){
-    if(producer_ids.find(i) != producer_ids.end()) continue;
-    consumers.Add(c.Get(i));
-  }
-  */
-
-  
-
-  
-    //Mobility scenario 1 
-  producer.Add(c.Get(1));
-  //producer.Add(c.Get(0));
-  //producer.Add(c.Get(5));
-  //producer.Add(c.Get(10));
-  //producer.Add(c.Get(15));
-  //producer.Add(c.Get(20));
-  
   for(int i=0; i<numNodes; i++){
-    if(i!=1 && i != 5 && i != 10 && i != 15 && i != 20 /*&& i!=44*/){ //remove i!=44
+    if(i!=producerId){
       consumers.Add(c.Get(i));
     }
   }
-  if(numAttacker > 0) attacker.Add(c.Get(numNodes + numAttacker - 1));//numNodes + numAttacker - 1));
 
   installConsumer(consumers);
   installProducer(producer);
 
-  // install producer in all consumer also
-  //installProducer(consumers);
-  
-
-  if(numAttacker > 0) installAttacker(attacker);
-
-  // Routing header
-  ndn::GlobalRoutingHelper ndnGRH;
-  ndnGRH.InstallAll();
-  ndnGRH.AddOrigins(valid_prefix+"/file", producer);
-  ndn::GlobalRoutingHelper::CalculateRoutes();
-
-  // forwarding stretagy
-  ndn::StrategyChoiceHelper::InstallAll(valid_prefix, "/localhost/nfd/strategy/best-route-2");
-  //ndn::StrategyChoiceHelper::InstallAll(fake_prefix, "/localhost/nfd/strategy/ncc");
 
 
-  //ndn::StrategyChoiceHelper::InstallAll<nfd::fw::FifaStrategy>(fake_prefix);
-  //ndn::StrategyChoiceHelper::InstallAll<nfd::fw::FifaStrategy>(valid_prefix);
-
-  Simulator::Stop(Seconds(simulationEnd));
-  
-  // trace details
-  ndn::L3RateTracer::InstallAll(output_path+"rate-trace_100"+ (numAttacker > 0 ? "_atck":"")+".txt", Seconds(5.0));
-
-  // PIT tracer
-  /*for(int i = 5 ; i < simulationEnd ; i += 5) {
-    for(int j = 0 ; j < consumers.size() ; j++) {
-      Simulator::Schedule(Seconds(i), &pitTracer, consumers.Get(j));
-    }
-  }*/
-
-  for ( int i = 0 ; i < simulationEnd ; i += 10){
-    Simulator::Schedule(Seconds(i), &printCurrentSimulationTime);
+  for(int i=0; i<c.GetN(); i++){
+    Simulator::Schedule(Seconds(1), &printPosition, c.Get(i)->GetObject<WaypointMobilityModel>());
   }
 
+  Simulator::Stop(Seconds(simulationEnd));
+
+  std::string output_path("/home/parth/Desktop/simulation_data/");
   std::string animFile = output_path+"v2v-test.xml";
   AnimationInterface anim(animFile);
   Simulator::Run ();

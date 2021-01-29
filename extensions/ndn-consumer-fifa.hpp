@@ -133,6 +133,7 @@ protected:
 
 protected:
   uint64_t dataPcktCnt;
+  uint64_t intPcktCnt;
   Ptr<UniformRandomVariable> m_rand; ///< @brief nonce generator
 
   uint32_t m_seq;      ///< @brief currently requested sequence number
@@ -209,6 +210,7 @@ protected:
     m_lastRetransmittedInterestDataDelay;
   TracedCallback<Ptr<App> /* app */, uint32_t /* seqno */, Time /* delay */,
                  uint32_t /*retx count*/, int32_t /*hop count*/> m_firstInterestDataDelay;
+
 
   /// @endcond
 };
