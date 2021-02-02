@@ -48,6 +48,7 @@
 
 #include "my-ndn-strategy-choice-helper.hpp"
 #include "fifa-forwarding-strategy.hpp"
+#include "GlobalVariable.hpp"
 
 using namespace std;
 using namespace ns3;
@@ -70,6 +71,7 @@ class Experiment{
     void ConfigureDevices ();
     void ConfigureMobility ();
     void ConfigureApplications ();
+    void ConfigureTracers();
     void SetUpNDN ();
     void SetUpProducers ();
     void SetUpConsumers ();
@@ -89,6 +91,8 @@ class Experiment{
     DoubleValue m_attack_rate; ///< rate of attackers
     std::string m_valid_prefix; ///< valid prefix
     std::string m_fake_prefix; ///< fake prefix
+    uint32_t m_attack_start_time; ///< attack start time
+    uint32_t m_attack_stop_time; ///< attack stop time
 
     uint32_t m_lossModel; ///< loss model (1=Friis;2=ItuR1411Los;3=TwoRayGround;4=LogDistance)
     uint32_t m_fading; ///< fading
@@ -124,15 +128,19 @@ class Experiment{
     uint32_t m_payloadSize;
     uint32_t m_ndnTxInterest;
     uint32_t m_ndnRxData;
+
+    std::string m_output_path;
 };
 
 Experiment::Experiment():
-  m_TotalSimTime (500.0),
+  m_TotalSimTime (100.0),
+  m_attack_start_time (30),
+  m_attack_stop_time (70),
   m_adhocTxNodes (),
   m_nNodes (20),
   m_nConsumers (15),
   m_nProducers (5),
-  m_nAttackers (0),
+  m_nAttackers (1),
   m_normal_rate (10.0),
   m_attack_rate (200.0),
   m_valid_prefix ("/vanet"),
@@ -159,12 +167,13 @@ Experiment::Experiment():
   m_streamIndex (0),
   m_nodeSpeed (20),
   m_nodePause (0),
-  m_forwardingStrategy (1),
+  m_forwardingStrategy (2), //1 = best-route, 2=fifa
   m_defaultRoutes (true),
   m_payloadSize (512),
   m_ndnGRH (),
   m_ndnTxInterest (0),
-  m_ndnRxData (0)
+  m_ndnRxData (0),
+  m_output_path ("/home/parth/Desktop/simulation_data/")
 {
 }
 
@@ -342,6 +351,15 @@ Experiment::SetUpNDN ()
   if (m_forwardingStrategy == 1){
     ns3::ndn::StrategyChoiceHelper::InstallAll("/", "/localhost/nfd/strategy/best-route-2");
   }else if (m_forwardingStrategy == 2){
+
+    // SET parameters for FIFA
+    ns3::GlobalVariable::setSimulationEnd(m_TotalSimTime);
+    ns3::GlobalVariable::setInterestCntTh(0.75);
+    ns3::GlobalVariable::setSatisfactionRatioTh(0.35);
+    ns3::GlobalVariable::setPrimaryTimer("5s");
+    ns3::GlobalVariable::setSecondaryTimer("10s");
+
+
     ns3::ndn::MyStretegyChoiceHelper::InstallAll<nfd::fw::FifaStrategy>("/","/localhost/nfd/strategy/FifaStrategy/%FD%05");
   }
 
@@ -441,7 +459,19 @@ Experiment::SetUpAttackers ()
 {
   if(m_nAttackers > 0)
   {
-      //change
+    ns3::ndn::AppHelper attackerApp("ns3::ndn::ConsumerCbrFifa");
+    attackerApp.SetPrefix (m_fake_prefix);
+    attackerApp.SetAttribute ("Frequency", m_attack_rate);  
+    attackerApp.SetAttribute ("StartTime", TimeValue (Seconds (m_attack_start_time)));
+    attackerApp.SetAttribute ("StopTime", TimeValue (Seconds (m_attack_stop_time)));
+
+    int tmp_cnt = 0;
+
+    for(int i = m_nNodes-1 ; i >= 0 ; i--) {
+      if(tmp_cnt == m_nAttackers) break;
+      attackerApp.Install (m_adhocTxNodes.Get (i));
+      tmp_cnt++;
+    } 
   }
 }
 
@@ -451,6 +481,15 @@ Experiment::ConfigureApplications ()
   SetUpProducers();
   SetUpConsumers();
   SetUpAttackers();
+}
+
+void
+Experiment::ConfigureTracers()
+{
+  std::string file_name = m_output_path+"rate-trace_"+std::to_string((int)m_TotalSimTime)
+                          + (m_nAttackers > 0 ? "_atck":"")
+                          + (m_forwardingStrategy == 2 ? "_fifa":"")+".txt";
+  ns3::ndn::L3RateTracer::InstallAll(file_name, Seconds(5.0));
 }
 
 void
@@ -492,6 +531,7 @@ Experiment::RunSimulation()
   ConfigureDevices (); //done
   ConfigureMobility (); //done
   ConfigureApplications (); 
+  ConfigureTracers();
 
   Simulator::Schedule(Seconds(0.0), &Experiment::PrintCurrentTime, this);
   Simulator::Stop (Seconds (m_TotalSimTime));
@@ -499,7 +539,7 @@ Experiment::RunSimulation()
   Simulator::Destroy ();
 
   std::cout << m_phyTxBytes << "\t" << m_phyRxBytes << std::endl;
-  std::cout << m_ndnTxInterest <<"\t" <<m_ndnRxData << std::endl;
+  std::cout << m_phyTxPkts <<"\t" <<m_phyRxPkts << std::endl;
 }
 
 int

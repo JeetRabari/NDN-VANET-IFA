@@ -40,6 +40,7 @@
 
 // Addition
 #include "ns3/ndnSIM/NFD/daemon/table/fib.hpp"
+#include "ns3/ndnSIM/ndn-cxx/encoding/nfd-constants.hpp"
 /*
 #include "ns3/ndnSIM-module.h"
 #include "ns3/core-module.h"
@@ -49,6 +50,8 @@
 */
 
 NS_LOG_COMPONENT_DEFINE("ndn.ConsumerFifa");
+
+ndn::nfd::LinkType ad = ndn::nfd::LINK_TYPE_AD_HOC;
 
 namespace ns3 {
 namespace ndn {
@@ -341,6 +344,12 @@ ConsumerFifa::WillSendOutInterest(uint32_t sequenceNumber)
   m_rtt->SentSeq(SequenceNumber32(sequenceNumber), 1);
 }
 
+shared_ptr<Face>
+ConsumerFifa::getFace()
+{
+  shared_ptr<Face> sp(m_face);
+  return sp;
+}
 
 } // namespace ndn
 } // namespace ns3

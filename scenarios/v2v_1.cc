@@ -356,7 +356,7 @@ int main (int argc, char *argv[])
 
   for ( int i = 0 ; i < simulationEnd ; i += 10){
     Simulator::Schedule(Seconds(i), &printCurrentSimulationTime);
-    Simulator::Schedule(Seconds(i), &avgPIT);
+    //Simulator::Schedule(Seconds(i), &avgPIT);
   }
 
   std::string animFile = output_path+"v2v-test.xml";

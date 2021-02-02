@@ -74,7 +74,7 @@ FifaStrategy::FifaStrategy(Forwarder& forwarder, const Name& name)
   ParsedInstanceName parsed = parseInstanceName(name);
   if (!parsed.parameters.empty()) {
     m_VID = parsed.parameters.toUri().substr(1);
-    std::cout << m_VID << std::endl;
+    //std::cout << m_VID << std::endl;
   }
   if (parsed.version && *parsed.version != getStrategyName()[-1].toVersion()) {
     NDN_THROW(std::invalid_argument(
@@ -116,6 +116,7 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
     return;
   }
 
+
   RetxSuppressionResult suppression = m_retxSuppression.decidePerPitEntry(*pitEntry);
   if (suppression == RetxSuppressionResult::SUPPRESS) {
     NFD_LOG_DEBUG(interest << " from=" << ingress << " suppressed");
@@ -124,13 +125,23 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
 
   const fib::Entry& fibEntry = this->lookupFib(*pitEntry);
   const fib::NextHopList& nexthops = fibEntry.getNextHops();
-  auto it = nexthops.end();
+  
+  /*
+    Current implmentation of ndnSIM do not forward
+    interest/data to same face receiving face
+    but we need Ad-Hoc face so we will skip check
+  */
+  
+  auto it = nexthops.begin(); // auto it = netxhopes.end();
 
   if (suppression == RetxSuppressionResult::NEW) {
+
+    // DISABLE CHECK TO MAKE Ad-Hoc
+
     // forward to nexthop with lowest cost except downstream
-    it = std::find_if(nexthops.begin(), nexthops.end(), [&] (const auto& nexthop) {
-      return isNextHopEligible(ingress.face, interest, nexthop, pitEntry);
-    });
+    //it = std::find_if(nexthops.begin(), nexthops.end(), [&] (const auto& nexthop) {
+    //  return isNextHopEligible(ingress.face, interest, nexthop, pitEntry);
+    //});
 
     if (it == nexthops.end()) {
       NFD_LOG_DEBUG(interest << " from=" << ingress << " noNextHop");
@@ -138,7 +149,7 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
       lp::NackHeader nackHeader;
       nackHeader.setReason(lp::NackReason::NO_ROUTE);
       this->sendNack(pitEntry, ingress, nackHeader);
-
+      if(m_VID == "v1") std::cout<<"NO NODE" << std::endl;
       this->rejectPendingInterest(pitEntry);
       return;
     }
@@ -157,7 +168,6 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
       m_recordTable.updateSatisfactionRatio(vehicleID);
     }
     //
-
     this->sendInterest(pitEntry, egress, interest);
     return;
   }
@@ -181,7 +191,6 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
       m_recordTable.updateSatisfactionRatio(vehicleID);
     }
     //
-
     this->sendInterest(pitEntry, egress, interest);
     NFD_LOG_DEBUG(interest << " from=" << ingress << " retransmit-unused-to=" << egress);
     return;
@@ -206,7 +215,6 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
       m_recordTable.updateSatisfactionRatio(vehicleID);
     }
     //
-
     this->sendInterest(pitEntry, egress, interest);
     NFD_LOG_DEBUG(interest << " from=" << ingress << " retransmit-retry-to=" << egress);
   }
@@ -227,6 +235,8 @@ FifaStrategy::beforeSatisfyInterest(const shared_ptr<pit::Entry>& pitEntry, cons
 
      if(vehicleID == m_VID) return;
 
+     NFD_LOG_DEBUG(m_VID<< "\t"<<data << "from =" << ingress);
+
      // update record table info
      m_recordTable.incrementNoOfSatisfiedInterest(vehicleID);
      m_recordTable.updateSatisfactionRatio(vehicleID);
@@ -245,6 +255,10 @@ void FifaStrategy::primaryMethod(){
   vector<string> keys = m_recordTable.keySet();
 
   if(keys.size() == 0) return;
+
+  //std::cout << "IN Primary of " << m_VID << endl;
+  //m_recordTable.printTable();
+  //std::cout << "End RecordTable" << std::endl;
 
   for(string k : keys){
 
