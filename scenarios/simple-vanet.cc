@@ -56,41 +56,33 @@ NS_LOG_COMPONENT_DEFINE("ndn.WifiExample");
 //   ndn->AddFace (face);
 //   return face;
 // }
+std::string filename = "/home/parth/Desktop/simulation_data/SimpleVanet/simple_vanet_pit_atck_fifa.csv";
 
-void
-printFIB(Ptr<Node> node)
+void PrintCurrentTime ()
 {
+  std::cout << "Simulation at: " << Simulator::Now().As(Time::S) << std::endl;
+  Simulator::Schedule(Seconds(5.0), &PrintCurrentTime);
+}
 
-  std::cout << "FIB for " << node->GetId() << std::endl;
-  ndn::nfd::Fib::const_iterator it = node->GetObject<ns3::ndn::L3Protocol>()->getForwarder()->getFib().begin();
-  ndn::nfd::Fib::const_iterator end = node->GetObject<ns3::ndn::L3Protocol>()->getForwarder()->getFib().end();
+void SetUpPitTrace()
+{
+  std::ofstream out (filename.c_str (), std::ios::app);
 
-  while ( it != end )
-  {
-    std::cout << it->getPrefix().toUri() << "\t";
-  
-    nfd::fib::NextHopList nh = it->getNextHops();
+  NodeContainer c = NodeContainer::GetGlobal();
+  for (NodeContainer::Iterator i = c.Begin(); i != c.End(); ++i) {
+    auto node_id = (*i)->GetId();
+    auto pit_size = (*i)->GetObject<ns3::ndn::L3Protocol>()->getForwarder()->getPit().size();
 
-    for(auto a = nh.begin() ; a != nh.end() ; a++)
-    {
-      std::cout <<"L: "<< a->getFace().getLocalUri() <<
-                "R: " << a->getFace().getRemoteUri() << "\t";
-    }
-    
-    it++;
-    std::cout << endl;
+     out << Simulator::Now().GetSeconds() <<","
+      << node_id << ","
+      << pit_size << ""
+      << std::endl;
   }
-  
-  std::cout << endl;
+
+  out.close();
+
+  Simulator::Schedule (Seconds (5.0), &SetUpPitTrace);
 }
-
-
-void 
-interestTB (shared_ptr<const ndn::Interest> in, Ptr<ns3::ndn::App> app, shared_ptr<ns3::ndn::Face> face)
-{
-  std::cout << "In traceback" << std::endl;
-}
-
 
 int
 main(int argc, char* argv[])
@@ -99,7 +91,7 @@ main(int argc, char* argv[])
   Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold", StringValue("2200"));
   Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("2200"));
   Config::SetDefault("ns3::WifiRemoteStationManager::NonUnicastMode",
-                     StringValue("OfdmRate24Mbps"));
+                     StringValue("OfdmRate6MbpsBW10MHz"));
 
   CommandLine cmd;
   cmd.Parse(argc, argv);
@@ -108,15 +100,18 @@ main(int argc, char* argv[])
   //////////////////////
   //////////////////////
   WifiHelper wifi;
-  // wifi.SetRemoteStationManager ("ns3::AarfWifiManager");
-  wifi.SetStandard(WIFI_PHY_STANDARD_80211a);
+  //wifi.SetRemoteStationManager ("ns3::AarfWifiManager");
+  wifi.SetStandard(WIFI_PHY_STANDARD_80211n_2_4GHZ);
   wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager", "DataMode",
-                               StringValue("OfdmRate24Mbps"));
+                               StringValue("OfdmRate6MbpsBW10MHz"));
 
   YansWifiChannelHelper wifiChannel; // = YansWifiChannelHelper::Default ();
   wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
   wifiChannel.AddPropagationLoss("ns3::ThreeLogDistancePropagationLossModel");
   wifiChannel.AddPropagationLoss("ns3::NakagamiPropagationLossModel");
+  wifiChannel.AddPropagationLoss ("ns3::RangePropagationLossModel");
+
+  Config::SetDefault ("ns3::RangePropagationLossModel::MaxRange", DoubleValue (27));
 
   // YansWifiPhy wifiPhy = YansWifiPhy::Default();
   YansWifiPhyHelper wifiPhyHelper = YansWifiPhyHelper::Default();
@@ -128,18 +123,26 @@ main(int argc, char* argv[])
   wifiMacHelper.SetType("ns3::AdhocWifiMac");
 
   
-  MobilityHelper mobility;
+  /*MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
-  positionAlloc->Add (Vector(10.0, 10.0, 0.0));
-  positionAlloc->Add (Vector(20.0, 10.0, 0.0));
-  positionAlloc->Add (Vector(30.0, 10.0, 0.0));
+  positionAlloc->Add (Vector(0.0, 30.0, 0.0));
+  positionAlloc->Add (Vector(15.0, 30.0, 0.0));
+  positionAlloc->Add (Vector(30.0, 30.0, 0.0));
+  positionAlloc->Add (Vector(45.0, 30.0, 0.0));
 
   mobility.SetPositionAllocator(positionAlloc);
 
   mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
+  */
+
+  int numNodes = 5;
+
+  MobilityHelper mobility;
+  mobility.SetMobilityModel("ns3::WaypointMobilityModel");
+
 
   NodeContainer nodes;
-  nodes.Create(3);
+  nodes.Create(numNodes);
 
   ////////////////
   // 1. Install Wifi
@@ -149,23 +152,33 @@ main(int argc, char* argv[])
   // 2. Install Mobility model
   mobility.Install(nodes);
 
+  Ptr<WaypointMobilityModel> wayMobility[numNodes];
+    
+  for (uint32_t i = 0; i < numNodes; i++) {
+    wayMobility[i] = nodes.Get(i)->GetObject<WaypointMobilityModel>();
+    Waypoint waypointStart(Seconds(0), Vector3D(i*10, 0, 0));
+    Waypoint waypointEnd(Seconds(100), Vector3D(i*10 + 100, 0, 0));
+
+    wayMobility[i]->AddWaypoint(waypointStart);
+    wayMobility[i]->AddWaypoint(waypointEnd);
+    NS_LOG_INFO("Node " << i << " positions " << waypointStart << " " << waypointEnd);
+  }
+
   // 3. Install NDN stack
   NS_LOG_INFO("Installing NDN stack");
   ndn::StackHelper ndnHelper;
-  // ndnHelper.AddNetDeviceFaceCreateCallback (WifiNetDevice::GetTypeId (), MakeCallback
-  // (MyNetDeviceFaceCallback));
   ndnHelper.setPolicy("nfd::cs::lru");
   ndnHelper.setCsSize(1000);
-  //ndnHelper.SetDefaultRoutes(true);
+  ndnHelper.SetDefaultRoutes(true);
   ndnHelper.Install(nodes);
 
   // Set BestRoute strategy
-  //ndn::StrategyChoiceHelper::Install(nodes, "/test/prefix", "/localhost/nfd/strategy/best-route");
+  //ndn::StrategyChoiceHelper::Install(nodes, "/", "/localhost/nfd/strategy/best-route-2");
   ns3::GlobalVariable::setSimulationEnd(100);
-  ns3::GlobalVariable::setInterestCntTh(0.75);
-  ns3::GlobalVariable::setSatisfactionRatioTh(0.35);
-  ns3::GlobalVariable::setPrimaryTimer("100s");
-  ns3::GlobalVariable::setSecondaryTimer("100s");
+  ns3::GlobalVariable::setInterestCntTh(0.85);
+  ns3::GlobalVariable::setSatisfactionRatioTh(0.15);
+  ns3::GlobalVariable::setPrimaryTimer("5s");
+  ns3::GlobalVariable::setSecondaryTimer("10s");
   ndn::MyStretegyChoiceHelper::InstallAll<nfd::fw::FifaStrategy>("/","/localhost/nfd/strategy/FifaStrategy/%FD%05");
 
   // 4. Set up applications
@@ -173,25 +186,46 @@ main(int argc, char* argv[])
 
   ndn::AppHelper consumerHelper("ns3::ndn::ConsumerCbrFifa");
   consumerHelper.SetPrefix("/test/prefix");
-  //consumerHelper.SetAttribute("MaxSeq", UintegerValue(200));
+  consumerHelper.SetAttribute("Frequency", DoubleValue(10));
   consumerHelper.SetAttribute("StopTime", TimeValue (Seconds(100)));
-  consumerHelper.Install(nodes.Get(0));
+  consumerHelper.Install(nodes.Get(1));
 
   ndn::AppHelper producerHelper("ns3::ndn::ProducerFifa");
   producerHelper.SetPrefix("/test/prefix");
-  producerHelper.SetAttribute("PayloadSize", StringValue("1200"));
-  producerHelper.Install(nodes.Get(2));
+  producerHelper.SetAttribute("PayloadSize", StringValue("512"));
+  producerHelper.Install(nodes.Get(4));
+
+  ndn::AppHelper attackerHelper("ns3::ndn::ConsumerCbrFifa");
+  attackerHelper.SetPrefix("/test/fake");
+  attackerHelper.SetAttribute("Frequency", DoubleValue(100));
+  attackerHelper.SetAttribute ("StartTime", TimeValue (Seconds (25)));
+  attackerHelper.SetAttribute("StopTime", TimeValue (Seconds(75)));
+  attackerHelper.Install(nodes.Get(0));
 
 
   //Global routing helper
   ndn::GlobalRoutingHelper ndnGRH;
   ndnGRH.InstallAll();
-  ndnGRH.AddOrigin("/test/prefix", nodes.Get(2));  
+  ndnGRH.AddOrigin("/test/prefix", nodes.Get(4));  
+  ndnGRH.AddOrigin("/test/fake", nodes.Get(4));  
   ndn::GlobalRoutingHelper::CalculateRoutes();
   
+  SetUpPitTrace();
 
+  PrintCurrentTime ();
 
   Simulator::Stop(Seconds(100.0));
+
+  ndn::L3RateTracer::InstallAll("/home/parth/Desktop/simulation_data/SimpleVanet/simple_vanet_trace_atck_fifa.txt", Seconds(5.0));
+
+  std::ofstream out (filename.c_str ());
+
+  out << "Time" << ","
+      << "NodeId" << ","
+      << "PIT_Size" << ""
+      << std::endl;
+
+  out.close();
 
   Simulator::Run();
 
@@ -199,6 +233,8 @@ main(int argc, char* argv[])
 
   return 0;
 }
+
+
 
 } // namespace ns3
 

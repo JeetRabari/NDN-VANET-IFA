@@ -68,7 +68,6 @@ void avgPIT(){
   for (NodeContainer::Iterator i = c.Begin(); i != c.End(); ++i) {
     total = (*i)->GetObject<ndn::L3Protocol>()->getForwarder()->getPit().size();
   }
-
   std::cout << "Avg. PIT size (no.of.records) = " << total/c.size()*1.0 << "Total = " << total << endl;
 }
 

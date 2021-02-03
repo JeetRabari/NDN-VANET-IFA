@@ -111,9 +111,18 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
   
   // vehicleID is in malicious then drop interest
   if (m_maliciousTable.contains(vehicleID)){
-    //std::cout << "Interest From Malicious Interest: Dropping it!!" << std::endl;
+    //std::cout << "Interest From " <<vehicleID<<" is Malicious Interest: Dropping it!!" << std::endl;
+    lp::NackHeader nackHeader;
+    nackHeader.setReason(lp::NackReason::NO_ROUTE);
+    this->sendNack(pitEntry, ingress, nackHeader);
     this->rejectPendingInterest(pitEntry);
     return;
+  }
+
+   if(vehicleID != m_VID){
+      if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
+      m_recordTable.incrementNoOfReceivedInterest(vehicleID);
+      m_recordTable.updateSatisfactionRatio(vehicleID);
   }
 
 
@@ -149,7 +158,6 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
       lp::NackHeader nackHeader;
       nackHeader.setReason(lp::NackReason::NO_ROUTE);
       this->sendNack(pitEntry, ingress, nackHeader);
-      if(m_VID == "v1") std::cout<<"NO NODE" << std::endl;
       this->rejectPendingInterest(pitEntry);
       return;
     }
@@ -161,13 +169,13 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
     ***********************************
     *       Update RecordTable        *
     *********************************** 
-    */
+    *
     if(vehicleID != m_VID){
       if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
       m_recordTable.incrementNoOfReceivedInterest(vehicleID);
       m_recordTable.updateSatisfactionRatio(vehicleID);
     }
-    //
+    /*/
     this->sendInterest(pitEntry, egress, interest);
     return;
   }
@@ -184,13 +192,13 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
     ***********************************
     *       Update RecordTable        *
     *********************************** 
-    */
+    *
     if(vehicleID != m_VID){
       if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
       m_recordTable.incrementNoOfReceivedInterest(vehicleID);
       m_recordTable.updateSatisfactionRatio(vehicleID);
     }
-    //
+    /*/
     this->sendInterest(pitEntry, egress, interest);
     NFD_LOG_DEBUG(interest << " from=" << ingress << " retransmit-unused-to=" << egress);
     return;
@@ -208,13 +216,13 @@ FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& 
     ***********************************
     *       Update RecordTable        *
     *********************************** 
-    */
+    *
     if(vehicleID != m_VID){
       if(!m_recordTable.hasRecord(vehicleID)) m_recordTable.addRecord(vehicleID);
       m_recordTable.incrementNoOfReceivedInterest(vehicleID);
       m_recordTable.updateSatisfactionRatio(vehicleID);
     }
-    //
+    /*/
     this->sendInterest(pitEntry, egress, interest);
     NFD_LOG_DEBUG(interest << " from=" << ingress << " retransmit-retry-to=" << egress);
   }
@@ -276,7 +284,7 @@ void FifaStrategy::primaryMethod(){
                << " int_th: " << int_th
                << " sr_th: " << sr_th
                << " total_intrest: " << totalInterestCnt <<endl;
-      std::cout<<"Identified Malicious Vehicle (Primary Method of "<<m_VID<<" ):" << k << endl;
+      std::cout<<"Identified ("<<ns3::Simulator::Now().GetSeconds() <<") Malicious Vehicle (Primary Method of "<<m_VID<<" ):" << k << endl;
     } 
   }
 }
@@ -311,7 +319,7 @@ void FifaStrategy::secondaryMethod(){
   if(it->second == 3){
     // add it into malicious vehicle list
     m_maliciousTable.adddVehicle(vid);
-    std::cout<<"Identified Malicious Vehicle (Secondary Method of " << m_VID <<" ):" << vid << endl;
+    std::cout<<"Identified ("<<ns3::Simulator::Now().GetSeconds() <<") Malicious Vehicle (Secondary Method of " << m_VID <<" ):" << vid << endl;
   }
 }
 

@@ -76,6 +76,9 @@ class Experiment{
     void SetUpProducers ();
     void SetUpConsumers ();
     void SetUpAttackers ();
+    void SetUpPitTrace ();
+    void PrintCsvHeader ();
+    void PitInfo ();
     
 
     //member variables
@@ -130,17 +133,18 @@ class Experiment{
     uint32_t m_ndnRxData;
 
     std::string m_output_path;
+    std::string m_csv_pit_tracer;
 };
 
 Experiment::Experiment():
-  m_TotalSimTime (100.0),
-  m_attack_start_time (30),
-  m_attack_stop_time (70),
+  m_TotalSimTime (50.0),
+  m_attack_start_time (10),
+  m_attack_stop_time (40),
   m_adhocTxNodes (),
-  m_nNodes (20),
-  m_nConsumers (15),
-  m_nProducers (5),
-  m_nAttackers (1),
+  m_nNodes (5),
+  m_nConsumers (4),
+  m_nProducers (1),
+  m_nAttackers (0),
   m_normal_rate (10.0),
   m_attack_rate (200.0),
   m_valid_prefix ("/vanet"),
@@ -167,13 +171,14 @@ Experiment::Experiment():
   m_streamIndex (0),
   m_nodeSpeed (20),
   m_nodePause (0),
-  m_forwardingStrategy (2), //1 = best-route, 2=fifa
+  m_forwardingStrategy (1), //1 = best-route, 2=fifa
   m_defaultRoutes (true),
   m_payloadSize (512),
   m_ndnGRH (),
   m_ndnTxInterest (0),
   m_ndnRxData (0),
-  m_output_path ("/home/parth/Desktop/simulation_data/")
+  m_output_path ("/home/parth/Desktop/simulation_data/"),
+  m_csv_pit_tracer ("pit-trace")
 {
 }
 
@@ -197,6 +202,7 @@ Experiment::ConfigureNodes()
 void
 Experiment::ConfigureChannels()
 {
+  /*
   if (m_lossModel == 1)
     {
       m_lossModelName = "ns3::FriisPropagationLossModel";
@@ -335,6 +341,30 @@ Experiment::ConfigureChannels()
       wifiPhy.EnablePcapAll ("vanet-routing-compare-pcap");
       wavePhy.EnablePcapAll ("vanet-routing-compare-pcap");
     }
+
+  */
+  WifiHelper wifi;
+  //wifi.SetRemoteStationManager ("ns3::AarfWifiManager");
+  wifi.SetStandard(WIFI_PHY_STANDARD_80211n_2_4GHZ);
+  wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager", "DataMode",
+                               StringValue("OfdmRate6MbpsBW10MHz"));
+
+  YansWifiChannelHelper wifiChannel; // = YansWifiChannelHelper::Default ();
+  wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+  wifiChannel.AddPropagationLoss("ns3::ThreeLogDistancePropagationLossModel");
+  wifiChannel.AddPropagationLoss("ns3::NakagamiPropagationLossModel");
+
+  // YansWifiPhy wifiPhy = YansWifiPhy::Default();
+  YansWifiPhyHelper wifiPhyHelper = YansWifiPhyHelper::Default();
+  wifiPhyHelper.SetChannel(wifiChannel.Create());
+  wifiPhyHelper.Set("TxPowerStart", DoubleValue(5));
+  wifiPhyHelper.Set("TxPowerEnd", DoubleValue(5));
+
+  WifiMacHelper wifiMacHelper;
+  wifiMacHelper.SetType("ns3::AdhocWifiMac");
+
+  m_adhocTxDevices = wifi.Install(wifiPhyHelper, wifiMacHelper, m_adhocTxNodes);
+
 }
 
 void
@@ -395,8 +425,8 @@ Experiment::ConfigureMobility ()
 
       ObjectFactory pos;
       pos.SetTypeId ("ns3::RandomBoxPositionAllocator");
-      pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=1500.0]"));
-      pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=300.0]"));
+      pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=5.0]"));
+      pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=5.0]"));
       // we need antenna height uniform [1.0 .. 2.0] for loss model
       pos.Set ("Z", StringValue ("ns3::UniformRandomVariable[Min=1.0|Max=2.0]"));
 
@@ -483,13 +513,56 @@ Experiment::ConfigureApplications ()
   SetUpAttackers();
 }
 
+
+void
+Experiment::SetUpPitTrace()
+{
+  std::string filename = m_output_path+m_csv_pit_tracer+"_"+std::to_string((int)m_TotalSimTime)
+                          + (m_nAttackers > 0 ? "_atck":"")
+                          + (m_forwardingStrategy == 2 ? "_fifa":"")+".csv";
+  std::ofstream out (filename.c_str (), std::ios::app);
+
+  NodeContainer c = NodeContainer::GetGlobal();
+  for (NodeContainer::Iterator i = c.Begin(); i != c.End(); ++i) {
+    auto node_id = (*i)->GetId();
+    auto pit_size = (*i)->GetObject<ns3::ndn::L3Protocol>()->getForwarder()->getPit().size();
+
+     out << Simulator::Now().GetSeconds() <<","
+      << node_id << ","
+      << pit_size << ""
+      << std::endl;
+  }
+
+  out.close();
+
+  Simulator::Schedule (Seconds (5.0), &Experiment::SetUpPitTrace , this);
+}
+
+void
+Experiment::PrintCsvHeader ()
+{
+  std::string filename = m_output_path+m_csv_pit_tracer+"_"+std::to_string((int)m_TotalSimTime)
+                          + (m_nAttackers > 0 ? "_atck":"")
+                          + (m_forwardingStrategy == 2 ? "_fifa":"")+".csv";
+  std::ofstream out (filename.c_str ());
+
+  out << "Time" << ","
+      << "Node ID" << ","
+      << "PIT Size" << ""
+      << std::endl;
+
+  out.close();
+}
+
 void
 Experiment::ConfigureTracers()
 {
+  PrintCsvHeader ();
   std::string file_name = m_output_path+"rate-trace_"+std::to_string((int)m_TotalSimTime)
                           + (m_nAttackers > 0 ? "_atck":"")
                           + (m_forwardingStrategy == 2 ? "_fifa":"")+".txt";
   ns3::ndn::L3RateTracer::InstallAll(file_name, Seconds(5.0));
+  SetUpPitTrace();
 }
 
 void
@@ -537,9 +610,6 @@ Experiment::RunSimulation()
   Simulator::Stop (Seconds (m_TotalSimTime));
   Simulator::Run ();
   Simulator::Destroy ();
-
-  std::cout << m_phyTxBytes << "\t" << m_phyRxBytes << std::endl;
-  std::cout << m_phyTxPkts <<"\t" <<m_phyRxPkts << std::endl;
 }
 
 int
