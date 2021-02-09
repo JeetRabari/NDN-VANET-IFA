@@ -38,6 +38,8 @@
 #include "fifa-forwarding-strategy.hpp"
 
 #include "ns3/ndnSIM/ndn-cxx/encoding/nfd-constants.hpp"
+#include "RSAHelper.hpp"
+
 using namespace std;
 namespace ns3 {
 
@@ -56,7 +58,7 @@ NS_LOG_COMPONENT_DEFINE("ndn.WifiExample");
 //   ndn->AddFace (face);
 //   return face;
 // }
-std::string filename = "/home/parth/Desktop/simulation_data/SimpleVanet/simple_vanet_pit_atck_fifa.csv";
+std::string filename = "/home/parth/Desktop/simulation_data/simple_vanet_pit_atck_fifa.csv";
 
 void PrintCurrentTime ()
 {
@@ -91,7 +93,8 @@ main(int argc, char* argv[])
   Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold", StringValue("2200"));
   Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("2200"));
   Config::SetDefault("ns3::WifiRemoteStationManager::NonUnicastMode",
-                     StringValue("OfdmRate6MbpsBW10MHz"));
+                     StringValue("OfdmRate3MbpsBW10MHz"));
+                    
 
   CommandLine cmd;
   cmd.Parse(argc, argv);
@@ -103,7 +106,7 @@ main(int argc, char* argv[])
   //wifi.SetRemoteStationManager ("ns3::AarfWifiManager");
   wifi.SetStandard(WIFI_PHY_STANDARD_80211n_2_4GHZ);
   wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager", "DataMode",
-                               StringValue("OfdmRate6MbpsBW10MHz"));
+                               StringValue("OfdmRate3MbpsBW10MHz"));
 
   YansWifiChannelHelper wifiChannel; // = YansWifiChannelHelper::Default ();
   wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -177,8 +180,8 @@ main(int argc, char* argv[])
   ns3::GlobalVariable::setSimulationEnd(100);
   ns3::GlobalVariable::setInterestCntTh(0.85);
   ns3::GlobalVariable::setSatisfactionRatioTh(0.15);
-  ns3::GlobalVariable::setPrimaryTimer("5s");
-  ns3::GlobalVariable::setSecondaryTimer("10s");
+  ns3::GlobalVariable::setPrimaryTimer("200s");
+  ns3::GlobalVariable::setSecondaryTimer("200s");
   ndn::MyStretegyChoiceHelper::InstallAll<nfd::fw::FifaStrategy>("/","/localhost/nfd/strategy/FifaStrategy/%FD%05");
 
   // 4. Set up applications
@@ -187,6 +190,7 @@ main(int argc, char* argv[])
   ndn::AppHelper consumerHelper("ns3::ndn::ConsumerCbrFifa");
   consumerHelper.SetPrefix("/test/prefix");
   consumerHelper.SetAttribute("Frequency", DoubleValue(10));
+  //consumerHelper.SetAttribute ("MaxSeq", UintegerValue(10));
   consumerHelper.SetAttribute("StopTime", TimeValue (Seconds(100)));
   consumerHelper.Install(nodes.Get(1));
 
@@ -195,12 +199,13 @@ main(int argc, char* argv[])
   producerHelper.SetAttribute("PayloadSize", StringValue("512"));
   producerHelper.Install(nodes.Get(4));
 
+  /*
   ndn::AppHelper attackerHelper("ns3::ndn::ConsumerCbrFifa");
   attackerHelper.SetPrefix("/test/fake");
   attackerHelper.SetAttribute("Frequency", DoubleValue(100));
   attackerHelper.SetAttribute ("StartTime", TimeValue (Seconds (25)));
   attackerHelper.SetAttribute("StopTime", TimeValue (Seconds(75)));
-  attackerHelper.Install(nodes.Get(0));
+  attackerHelper.Install(nodes.Get(0));*/
 
 
   //Global routing helper
@@ -213,10 +218,10 @@ main(int argc, char* argv[])
   SetUpPitTrace();
 
   PrintCurrentTime ();
-
+  
   Simulator::Stop(Seconds(100.0));
 
-  ndn::L3RateTracer::InstallAll("/home/parth/Desktop/simulation_data/SimpleVanet/simple_vanet_trace_atck_fifa.txt", Seconds(5.0));
+  ndn::L3RateTracer::InstallAll("/home/parth/Desktop/simulation_data/simple_vanet_trace_atck_fifa.txt", Seconds(5.0));
 
   std::ofstream out (filename.c_str ());
 

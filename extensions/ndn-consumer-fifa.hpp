@@ -39,6 +39,10 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/member.hpp>
 
+#include "RSAHelper.hpp"
+
+#include <bits/stdc++.h>
+
 namespace ns3 {
 namespace ndn {
 
@@ -137,6 +141,10 @@ protected:
 protected:
   uint64_t dataPcktCnt;
   uint64_t intPcktCnt;
+  std::unordered_set<uint32_t> m_seqSet;
+  RSAHelper m_rsaHelper;
+  std::string m_encVID;
+  std::string m_VID;
   Ptr<UniformRandomVariable> m_rand; ///< @brief nonce generator
 
   uint32_t m_seq;      ///< @brief currently requested sequence number

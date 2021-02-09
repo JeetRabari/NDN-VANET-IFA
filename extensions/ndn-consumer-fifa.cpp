@@ -98,10 +98,13 @@ ConsumerFifa::ConsumerFifa()
   , dataPcktCnt(0)
   , intPcktCnt(0)
   , m_seqMax(0) // don't request anything
+  , m_rsaHelper (1024)
 {
   NS_LOG_FUNCTION_NOARGS();
 
   m_rtt = CreateObject<RttMeanDeviation>();
+
+  m_VID = "";
 }
 
 void
@@ -183,8 +186,6 @@ ConsumerFifa::SendPacket()
   if (!m_active)
     return;
 
-  intPcktCnt++;
-
   NS_LOG_FUNCTION_NOARGS();
 
   uint32_t seq = std::numeric_limits<uint32_t>::max(); // invalid
@@ -205,6 +206,12 @@ ConsumerFifa::SendPacket()
     seq = m_seq++;
   }
 
+  if (m_seqSet.find(seq) == m_seqSet.end())
+  {
+    m_seqSet.insert(seq);
+    intPcktCnt++;
+  }
+
   //
   shared_ptr<Name> nameWithSequence = make_shared<Name>(m_interestName);
   nameWithSequence->appendSequenceNumber(seq);
@@ -223,16 +230,19 @@ ConsumerFifa::SendPacket()
   // ++++++++++++++++++++++++++++++++++
   // + Setting Application Parameters +
   // ++++++++++++++++++++++++++++++++++
+  if (m_VID == "")
+  {
+    m_VID = "v"+ std::to_string (GetNode()->GetId());
+    m_encVID = m_rsaHelper.encrypt (m_VID.c_str());
+  }
+  
   uint32_t type = ndn::nfd::tlv::ApplicationParameters;
-  std::string myStr("ABCDEFGHI/"+ std::to_string(GetNode()->GetId()));
+  std::string myStr(m_encVID+"/-/-/-/-/"+m_rsaHelper.publicKeyRSAStr);
   std::vector<uint8_t> myVec(myStr.begin(), myStr.end());
   uint8_t *ptr = &myVec[0];
 
   interest -> setApplicationParameters(ptr, myVec.size());
   
-
-
-  // std::cout<< interest->getApplicationParameters().hasValue() << std::endl;
 
   // NS_LOG_INFO ("Requesting Interest: \n" << *interest);
   NS_LOG_INFO("> Interest for " << seq);

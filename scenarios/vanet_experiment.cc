@@ -72,6 +72,7 @@ class Experiment{
     void ConfigureMobility ();
     void ConfigureApplications ();
     void ConfigureTracers();
+    void ConfugureScenario ();
     void SetUpNDN ();
     void SetUpProducers ();
     void SetUpConsumers ();
@@ -84,6 +85,9 @@ class Experiment{
     //member variables
     double m_TotalSimTime; ///< total sim time
     NodeContainer m_adhocTxNodes; ///< adhoc transmit nodes
+    NodeContainer m_consumerNodes; ///< consumer nodes
+    NodeContainer m_producerNodes; ///< producer nodes
+    NodeContainer m_attackerNodes; ///< attacker nodes
     NetDeviceContainer m_adhocTxDevices; ///< adhoc transmit devices
     uint32_t m_nNodes; ///< number of nodes
 
@@ -134,26 +138,32 @@ class Experiment{
 
     std::string m_output_path;
     std::string m_csv_pit_tracer;
+
+    uint32_t m_scenario;
+    Ptr<ListPositionAllocator> m_positionAlloc;
+    double m_roadLength; ///< length of road in meters.
+
+    vector<Vector3D> m_nodesPos;
 };
 
 Experiment::Experiment():
-  m_TotalSimTime (50.0),
-  m_attack_start_time (10),
-  m_attack_stop_time (40),
+  m_TotalSimTime (250.0),
+  m_attack_start_time (50),
+  m_attack_stop_time (200),
   m_adhocTxNodes (),
-  m_nNodes (5),
-  m_nConsumers (4),
-  m_nProducers (1),
-  m_nAttackers (0),
-  m_normal_rate (10.0),
-  m_attack_rate (200.0),
+  m_nNodes (40), // no of total nodes
+  m_nConsumers (30), // no. of consumers
+  m_nProducers (10), // no. of producers
+  m_nAttackers (0), // no. of attackers
+  m_normal_rate (10.0), // noraml rate
+  m_attack_rate (200.0), // attacker rate
   m_valid_prefix ("/vanet"),
   m_fake_prefix ("/fake"),
   // Two-Ray ground
   m_lossModel (3),
   m_fading (0),
   m_lossModelName (""),
-  m_phyMode ("OfdmRate6MbpsBW10MHz"),
+  m_phyMode ("OfdmRate3MbpsBW10MHz"),
   // 1=802.11p
   m_80211mode (1),
   m_phyModeB ("DsssRate11Mbps"),
@@ -166,20 +176,24 @@ Experiment::Experiment():
   m_phyTxBytes (0),
   m_phyRxPkts (0),
   m_phyRxBytes (0),
-  m_mobility (2),
+  m_mobility (1), //1= sumo, 2=random-waypoint
   m_traceFile (""),
   m_streamIndex (0),
   m_nodeSpeed (20),
   m_nodePause (0),
-  m_forwardingStrategy (1), //1 = best-route, 2=fifa
+  m_forwardingStrategy (3), //1 = best-route, 2=fifa, 3 = best-route(using FIFA)
   m_defaultRoutes (true),
   m_payloadSize (512),
   m_ndnGRH (),
   m_ndnTxInterest (0),
   m_ndnRxData (0),
   m_output_path ("/home/parth/Desktop/simulation_data/"),
-  m_csv_pit_tracer ("pit-trace")
+  m_csv_pit_tracer ("pit-trace"),
+  m_scenario (1), // SCENARIO
+  m_roadLength (100)
 {
+  m_traceFile = m_output_path + "circle.tcl";
+  m_positionAlloc = CreateObject <ListPositionAllocator> ();
 }
 
 Experiment:: ~Experiment()
@@ -343,11 +357,17 @@ Experiment::ConfigureChannels()
     }
 
   */
+  // disable fragmentation
+  Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold", StringValue("2200"));
+  Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("2200"));
+  Config::SetDefault("ns3::WifiRemoteStationManager::NonUnicastMode",
+                     StringValue(m_phyMode));
+
   WifiHelper wifi;
   //wifi.SetRemoteStationManager ("ns3::AarfWifiManager");
   wifi.SetStandard(WIFI_PHY_STANDARD_80211n_2_4GHZ);
   wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager", "DataMode",
-                               StringValue("OfdmRate6MbpsBW10MHz"));
+                               StringValue(m_phyMode));
 
   YansWifiChannelHelper wifiChannel; // = YansWifiChannelHelper::Default ();
   wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -384,10 +404,21 @@ Experiment::SetUpNDN ()
 
     // SET parameters for FIFA
     ns3::GlobalVariable::setSimulationEnd(m_TotalSimTime);
-    ns3::GlobalVariable::setInterestCntTh(0.75);
-    ns3::GlobalVariable::setSatisfactionRatioTh(0.35);
+    ns3::GlobalVariable::setInterestCntTh(0.85);
+    ns3::GlobalVariable::setSatisfactionRatioTh(0.15);
     ns3::GlobalVariable::setPrimaryTimer("5s");
     ns3::GlobalVariable::setSecondaryTimer("10s");
+
+
+    ns3::ndn::MyStretegyChoiceHelper::InstallAll<nfd::fw::FifaStrategy>("/","/localhost/nfd/strategy/FifaStrategy/%FD%05");
+  }else if (m_forwardingStrategy == 3)
+  {
+     // SET parameters for FIFA
+    ns3::GlobalVariable::setSimulationEnd(m_TotalSimTime);
+    ns3::GlobalVariable::setInterestCntTh(0.85);
+    ns3::GlobalVariable::setSatisfactionRatioTh(0.15);
+    ns3::GlobalVariable::setPrimaryTimer("1000s");
+    ns3::GlobalVariable::setSecondaryTimer("1000s");
 
 
     ns3::ndn::MyStretegyChoiceHelper::InstallAll<nfd::fw::FifaStrategy>("/","/localhost/nfd/strategy/FifaStrategy/%FD%05");
@@ -447,11 +478,27 @@ Experiment::ConfigureMobility ()
 
       // initially assume all nodes are moving
       WaveBsmHelper::GetNodesMoving ().resize (m_nNodes, 1);
-    }
+    } else if (m_mobility == 3) {
+        MobilityHelper mobility;
 
-  // Configure callback for logging
-  //Config::Connect ("/NodeList/*/$ns3::MobilityModel/CourseChange",
-  //                 MakeBoundCallback (&VanetRoutingExperiment::CourseChange, &m_os));
+        mobility.SetMobilityModel("ns3::WaypointMobilityModel");
+
+        mobility.Install(m_adhocTxNodes);
+
+        // mobility.SetPositionAllocator (m_positionAlloc);
+
+        Ptr<WaypointMobilityModel> wayMobility[m_nNodes];
+      
+        for (uint32_t i = 0; i < m_nNodes; i++) {
+          wayMobility[i] = m_adhocTxNodes.Get(i)->GetObject<WaypointMobilityModel>();
+          Waypoint waypointStart(Seconds(0), m_nodesPos[i]);
+          Waypoint waypointEnd(Seconds(m_TotalSimTime), m_nodesPos[i] + Vector3D(m_roadLength,0,0));
+
+          wayMobility[i]->AddWaypoint(waypointStart);
+          wayMobility[i]->AddWaypoint(waypointEnd);
+          NS_LOG_INFO("Node " << i << " positions " << waypointStart << " " << waypointEnd);
+        }
+    }
 }
 
 void
@@ -462,10 +509,10 @@ Experiment::SetUpProducers () {
   producerApp.SetAttribute ("PayloadSize", UintegerValue(m_payloadSize));
   producerApp.SetAttribute ("StopTime", TimeValue(Seconds(m_TotalSimTime)));
 
-  for(int i = 0 ; i < m_nProducers ; i++) {
-    producerApp.Install (m_adhocTxNodes.Get(i));
-    m_ndnGRH.AddOrigins (m_valid_prefix, m_adhocTxNodes.Get(i));
-    m_ndnGRH.AddOrigins (m_fake_prefix, m_adhocTxNodes.Get(i));
+  for(int i = 0 ; i < m_producerNodes.size() ; i++) {
+    producerApp.Install (m_producerNodes.Get(i));
+    m_ndnGRH.AddOrigins (m_valid_prefix, m_producerNodes.Get(i));
+    m_ndnGRH.AddOrigins (m_fake_prefix, m_producerNodes.Get(i));
   }
 
   m_ndnGRH.CalculateRoutes();
@@ -479,8 +526,8 @@ Experiment::SetUpConsumers ()
   consumerApp.SetAttribute ("Frequency", m_normal_rate);
   consumerApp.SetAttribute ("StopTime", TimeValue (Seconds (m_TotalSimTime)));
 
-  for(int i = m_nProducers ; i < m_nNodes ; i++){
-    consumerApp.Install (m_adhocTxNodes.Get(i));
+  for(int i = 0 ; i < m_consumerNodes.size() ; i++){
+    consumerApp.Install (m_consumerNodes.Get(i));
   }
 }
 
@@ -495,13 +542,10 @@ Experiment::SetUpAttackers ()
     attackerApp.SetAttribute ("StartTime", TimeValue (Seconds (m_attack_start_time)));
     attackerApp.SetAttribute ("StopTime", TimeValue (Seconds (m_attack_stop_time)));
 
-    int tmp_cnt = 0;
-
-    for(int i = m_nNodes-1 ; i >= 0 ; i--) {
-      if(tmp_cnt == m_nAttackers) break;
-      attackerApp.Install (m_adhocTxNodes.Get (i));
-      tmp_cnt++;
-    } 
+    for (int i = 0 ; i < m_attackerNodes.size() ; i++)
+    {
+      attackerApp.Install (m_attackerNodes.Get(i));
+    }
   }
 }
 
@@ -566,6 +610,36 @@ Experiment::ConfigureTracers()
 }
 
 void
+Experiment::ConfugureScenario ()
+{
+  if (m_scenario == 1)
+  {
+    // set up total nodes, consumers and producers and mobility
+    m_nNodes = 5;
+    m_nConsumers = 1;
+    m_nAttackers = 1;
+    m_mobility = 3;
+
+    // set up node positions
+    m_nodesPos.push_back (Vector3D (0,  0, 0));
+    m_nodesPos.push_back (Vector3D (10, 0, 0));
+    m_nodesPos.push_back (Vector3D (20, 0, 0));
+    m_nodesPos.push_back (Vector3D (30, 0, 0));
+    m_nodesPos.push_back (Vector3D (40, 0, 0));
+
+    // set up forwarding strategy
+    m_forwardingStrategy = 3; // 2=fifa, 3 = normal (w/fifa)
+
+    //set up consumer, producer and attacker node containers
+    m_attackerNodes.Add (m_adhocTxNodes.Get(0));
+    
+    m_producerNodes.Add (m_adhocTxNodes.Get (4));
+    
+    m_consumerNodes.Add (m_adhocTxNodes.Get (1));
+  }
+}
+
+void
 Experiment::DataTraceCallback (std::string context)
 {
   std::cout << "IN TRACE BACK" << std::endl;
@@ -600,6 +674,7 @@ Experiment::RunSimulation()
 {
 
   ConfigureNodes (); //done
+  ConfugureScenario ();
   ConfigureChannels (); //done
   ConfigureDevices (); //done
   ConfigureMobility (); //done

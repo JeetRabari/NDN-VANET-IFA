@@ -33,6 +33,9 @@
 // Addition
 #include "RecordTable.hpp"
 #include "MaliciousVehicleTable.hpp"
+#include "openssl/rsa.h"
+#include "openssl/pem.h"
+#include "openssl/err.h"
 
 namespace nfd {
 namespace fw {
@@ -99,6 +102,8 @@ private:
   MaliciousVehicleTable m_maliciousTable;
   unordered_map<std::string, int> map;
   std::string m_VID;
+
+  std::string decrypt (std::string cipherText, std::string publicKey);
 };
 
 } // namespace fw

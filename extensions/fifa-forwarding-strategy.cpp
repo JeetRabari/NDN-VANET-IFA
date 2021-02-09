@@ -32,6 +32,7 @@
 
 
 
+
 namespace nfd {
 namespace fw {
 
@@ -94,20 +95,32 @@ void
 FifaStrategy::afterReceiveInterest(const FaceEndpoint& ingress, const Interest& interest,
                                          const shared_ptr<pit::Entry>& pitEntry)
 {
-  /*
+  
   // Get Application Parameter
   const uint8_t *ptr = interest.getApplicationParameters().value();
   std::string myStr((char *)ptr);
-  std::cout << "APPLICATION PARAMETERS : " << myStr << std::endl;
-  */
+  
+  //std::cout << myStr << std::endl;
+
+  auto pos = myStr.find("/-/-/-/-/");
+
+  std::string encVID = myStr.substr(0, pos);
+  std::string pubKeyRSA = myStr.substr(pos+9);
+
+  std::string decryptedVID = decrypt(encVID, pubKeyRSA);
+
 
   // Get vehicleID from name
   // 2nd last element in name fromat is vehicleID
   string vehicleID = interest.getName().at(-2).toUri();
 
-
   // Check whether decrypted value matches vehicleID with 
   // one in certificate
+  if (decryptedVID != vehicleID)
+  {
+    std::cout << "Certificate Verification failed !!!" << std::endl;
+    return;
+  }
   
   // vehicleID is in malicious then drop interest
   if (m_maliciousTable.contains(vehicleID)){
@@ -321,6 +334,33 @@ void FifaStrategy::secondaryMethod(){
     m_maliciousTable.adddVehicle(vid);
     std::cout<<"Identified ("<<ns3::Simulator::Now().GetSeconds() <<") Malicious Vehicle (Secondary Method of " << m_VID <<" ):" << vid << endl;
   }
+}
+
+std::string 
+FifaStrategy::decrypt (std::string cipherText, std::string publicKey)
+{
+    BIO *pub = BIO_new ( BIO_s_mem() );
+    BIO_write (pub, publicKey.c_str(), publicKey.length());
+
+    RSA* publicK = PEM_read_bio_RSAPublicKey (pub, NULL, 0 ,NULL);
+
+    char* decrypted = (char *)malloc (cipherText.length()*sizeof(char));
+
+    int err = RSA_public_decrypt (cipherText.length(), (unsigned char*)cipherText.c_str(), (unsigned char*)decrypted
+                        ,publicK, RSA_PKCS1_PADDING);
+
+    if(err == -1) 
+    {
+      char *err = (char *) malloc (130);
+      ERR_load_crypto_strings();
+      ERR_error_string(ERR_get_error(), err);
+      NS_LOG_INFO ("Decrypt Error: " << err); 
+      return "";
+    }
+
+    std::string retVal (decrypted, strlen(decrypted));
+
+    return retVal;
 }
 
 
